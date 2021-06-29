@@ -6,6 +6,9 @@ use NFePHP\NFe\Tools;
 use NFePHP\NFe\Make;
 use NFePHP\Common\Certificate;
 use NFePHP\Common\Soap\SoapFake;
+use NFePHP\NFe\Common\Standardize;
+use NFePHP\NFe\Complements;
+
 
 class NFCe {
 
@@ -337,10 +340,93 @@ $nfce = (new configNFCe)->get_nfce();
         $dados_da_nfce['erro'] = $e->getMessage(); // Caso haja erro, guarda no banco de dados
     }
 
+    try {
+        $idLote = str_pad(100, 15, '0', STR_PAD_LEFT); // Identificador do lote
+        $resp = $tools->sefazEnviaLote([$xmlAssinado], $idLote);
+
+        $st = new Standardize();
+        $std = $st->toStd($resp);
+        if ($std->cStat != 103) {
+            //erro registrar e voltar
+            exit("[$std->cStat] $std->xMotivo");
+        }
+        $recibo = $std->infRec->nRec; // Vamos usar a variável $recibo para consultar o status da nota
+    } catch (\Exception $e) {
+        //aqui você trata possiveis exceptions do envio
+        $dados_da_nfce['erro'] = $e->getMessage(); // Caso haja erro, guarda no banco de dados
+    }
+
+    try {
+        $protocolo = $tools->sefazConsultaRecibo($recibo);
+    } catch (\Exception $e) {
+        //aqui você trata possíveis exceptions da consulta
+        $dados_da_nfce['erro'] = $e->getMessage(); // Caso haja erro, guarda no banco de dados
+    }
+
+    $request = $xmlAssinado;
+        $response = $protocolo;
+
+        try {
+            $xmlProtocolado = Complements::toAuthorize($request, $response);
+            
+            // header('Content-type: text/xml; charset=UTF-8');
+            // echo $xmlProtocolado;
+            
+            $dados_da_nfce['status']    = "Emitida";
+            $dados_da_nfce['protocolo'] = $response;
+            $dados_da_nfce['xml']       = $xmlProtocolado;
+
+        } catch (\Exception $e) {
+            $dados_da_nfce['erro'] = $e->getMessage(); // Caso haja erro, guarda no banco de dados
+        }
+
     // $xml = $tools->signNFe($xml);
     
     header('Content-Type: application/xml; charset=utf-8');
     echo $xmlAssinado;
-    
 }  
+
+public function finalizaVendaEmiteNFCe($id_caixa)
+{
+    $valor_pago = $this->request->getvar('valor_a_pagar');
+    $troco = $this->request->getvar('troco');
+
+    $dados = $this->request->getvar();
+    $session = session();
+    
+    $dados['id_empresa'] = $session->get('id_empresa');
+    $dados['data']       = date('Y-m-d');
+    $dados['hora']       = date('H:i:s');
+    $dados['id_caixa']   = $id_caixa;
+
+    $id_venda = $this->venda_model->insert($dados);
+
+    $produtos_do_pdv = $this->produto_pdv_model->findAll();
+
+    foreach ($produtos_do_pdv as $produto) {
+        $produto['id_venda'] = $id_venda;
+        $produto['id_empresa'] = $session->get('id_empresa');
+
+        $this->produto_da_venda_model->insert($produto);
+
+        // Decrementa da quantidade do estoque a quantidade do produto vendido
+        $produto_do_estoque = $this->produto_model->where('id_produto', $produto['id_produto'])->first();
+        $nova_qtd = $produto_do_estoque['quantidade'] - $produto['quantidade'];
+
+        $this->produto_model->set('quantidade', $nova_qtd)->where('id_produto', $produto['id_produto'])->update();
+    }
+
+    // Emite NFCe
+    $dados_danfce = $this->emiteNFCe($id_venda, $valor_pago, $troco, 1); // Esse 1 é o tipo, 1=emitir pelo PDV
+
+    // Remove todos os registros da tabela produtos_do_pdv.
+    $this->produto_pdv_model->emptyTable('produtos_do_pdv');
+
+    $session = session();
+    $session->setFlashdata('alert', 'success_venda');
+    // $session->setFlashdata('danfce', "localhost/sped-da/?data={$dados_danfce['data']}&chave={$dados_danfce['chave']}&local={$dados_danfce['local']}&tipo=nfce");
+    
+    echo "http://localhost/sped-da/?data={$dados_danfce['data']}&chave={$dados_danfce['chave']}&local={$dados_danfce['local']}&tipo=nfce";
+}
+
 } 
