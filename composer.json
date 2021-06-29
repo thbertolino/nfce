@@ -1,0 +1,12 @@
+{
+    "name": "thiago-webajato/nfce",
+    "authors": [
+        {
+            "name": "Thiago Bertolino",
+            "email": "thiagopbertolino@gmail.com"
+        }
+    ],
+    "require": {
+        "nfephp-org/sped-nfe": "^5.0"
+    }
+}
