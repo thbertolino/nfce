@@ -386,34 +386,34 @@ $nfce = (new configNFCe)->get_nfce();
     echo $xmlAssinado;
 }  
 
-public function finalizaVendaEmiteNFCe($id_caixa)
+public function finalizaVendaEmiteNFCe($id)
 {
-    $valor_pago = $this->request->getvar('valor_a_pagar');
-    $troco = $this->request->getvar('troco');
+    $valor_pago = $this->request->getvar('total');
+    $troco = $this->request->getvar('amount');
 
     $dados = $this->request->getvar();
     $session = session();
-    
-    $dados['id_empresa'] = $session->get('id_empresa');
-    $dados['data']       = date('Y-m-d');
-    $dados['hora']       = date('H:i:s');
-    $dados['id_caixa']   = $id_caixa;
 
-    $id_venda = $this->venda_model->insert($dados);
+    $dados['id'] = $session->get('id');
+    $dados['date']       = date('Y-m-d');
+    $dados['date']       = date('H:i:s');
+    $dados['id']   = $id;
 
-    $produtos_do_pdv = $this->produto_pdv_model->findAll();
+    $id = $this->venda_model->insert($dados);
 
-    foreach ($produtos_do_pdv as $produto) {
-        $produto['id_venda'] = $id_venda;
+    $pedidos = (new configNFCe)->get_product();
+
+    foreach ($pedidos as $produto) {
+        $produto['id'] = $id_venda;
         $produto['id_empresa'] = $session->get('id_empresa');
 
         $this->produto_da_venda_model->insert($produto);
 
         // Decrementa da quantidade do estoque a quantidade do produto vendido
-        $produto_do_estoque = $this->produto_model->where('id_produto', $produto['id_produto'])->first();
-        $nova_qtd = $produto_do_estoque['quantidade'] - $produto['quantidade'];
+        $produto_do_estoque = $this->produto_model->where('id', $produto['id'])->first();
+        $nova_qtd = $produto_do_estoque['quantity'] - $produto['quantity'];
 
-        $this->produto_model->set('quantidade', $nova_qtd)->where('id_produto', $produto['id_produto'])->update();
+        $this->produto_model->set('quantity', $nova_qtd)->where('id', $produto['id'])->update();
     }
 
     // Emite NFCe
@@ -428,5 +428,4 @@ public function finalizaVendaEmiteNFCe($id_caixa)
     
     echo "http://localhost/sped-da/?data={$dados_danfce['data']}&chave={$dados_danfce['chave']}&local={$dados_danfce['local']}&tipo=nfce";
 }
-
 } 
